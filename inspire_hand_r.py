@@ -805,7 +805,7 @@ class InspireHandR:
         '''print('Data sent:')
         for i in range(1,datanum+6):
             print(hex(putdata[i-1]))'''
-        
+        time.sleep(0.05)
         getdata = self.ser.read(20)
         '''print('Returned data:')
         for i in range(1,21):
