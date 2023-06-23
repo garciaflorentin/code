@@ -4,8 +4,8 @@ import time
 class InspireHandR:
     def __init__(self):
         #Serial port settings
-        port = 'COM3'
-        self.ser = s.Serial(port='COM3', baudrate=115200, bytesize=8,stopbits=1, writeTimeout=0, timeout=0)
+        port ='/dev/ttyUSB0'
+        self.ser = s.Serial(port='/dev/ttyUSB0', baudrate=115200, bytesize=8,stopbits=1, writeTimeout=0, timeout=0)
         self.hand_id = 1
         power1 = 500
         power2 = 500
@@ -144,12 +144,12 @@ class InspireHandR:
         # print('data sent')
         # for i in range(1,datanum+6):
         #     print(hex(putdata[i-1]))
-            
+        time.sleep(0.05)
         getdata= self.ser.read(9)
         #print('data returned ',getdata)
         # print('data returned ')
-        # for i in range(1,10):
-            # print(hex(getdata[i-1]))
+        #for i in range(1,10):
+         #   print(hex(getdata[i-1]))
         return
 
     #set angle
@@ -308,12 +308,13 @@ class InspireHandR:
         self.ser.write(putdata)
         #print('Data sent')
         #for i in range(1,datanum+6):
-        #    print(hex(putdata[i-1]))
+         # print(hex(putdata[i-1]))
         
+        time.sleep(0.05)
         getdata= self.ser.read(9)
         #print('Returned data ')
         #for i in range(1,10):
-        #    print(hex(getdata[i-1]))
+         #   print(hex(getdata[i-1]))
 
 
     #set speed
@@ -701,13 +702,14 @@ class InspireHandR:
             putdata = putdata + self.num2str(b[i-1])
         self.ser.write(putdata)
         # print('Data sent:')
-        # for i in range(1,datanum+6):
-        # print(hex(putdata[i-1]))
-        
+        #for i in range(1,datanum+6):
+        #    print(hex(putdata[i-1]))
+        time.sleep(0.1)
         getdata = self.ser.read(20)
+        #print('getdatasize=', len(getdata))
         # print('Returned data:')
-        # for i in range(1,21):
-        # print(hex(getdata[i-1]))
+        #for i in range(1,21):
+        #    print(hex(getdata[i-1]))
         
         actforce = [0]*6
 
@@ -737,17 +739,18 @@ class InspireHandR:
             else:
                 actforce[0] = getdata[8] + getdata[7]
                 actforce[1] = getdata[10] + getdata[9]
-                actforce[2] = getdata[12] + getdata[12]
+                actforce[2] = getdata[12] + getdata[11]
                 actforce[3] = getdata[14] + getdata[13]
                 actforce[4] = getdata[16] + getdata[15]
                 actforce[5] = getdata[18] + getdata[17]
                 #print(type(actforce[0]),eval(actforce[0])
-                actforce[0] = actforce[0].encode("hex")
-                actforce[1] = actforce[1].encode("hex")
-                actforce[2] = actforce[2].encode("hex")
-                actforce[3] = actforce[3].encode("hex")
-                actforce[4] = actforce[4].encode("hex")
-                actforce[5] = actforce[5].encode("hex")
+                actforce[0] = hex(actforce[0])
+                actforce[1] = hex(actforce[1])
+                actforce[2] = hex(actforce[2])
+                actforce[3] = hex(actforce[3])
+                actforce[4] = hex(actforce[4])
+                actforce[5] = hex(actforce[5])
+
 
             ''' #getdata[i*2+5] = getdata[i*2+5]
                 #getdata[i*2+6] = getdata[i*2+5]
@@ -1251,11 +1254,11 @@ class InspireHandR:
                 if f >1000:
                     continue
                 if i ==5:#thumbs
-                    if f >300: #If the finger force is greater than 100, keep the previous position
+                    if f >1000: #If the finger force is greater than 100, keep the previous position
                         is_static[i] = 1 #Mark as a static finger, the finger will not move at this position
                         static_value[i] = temp_value[i] #The i-th finger position of the previous step
                 else:
-                    if f >300: #If the finger force is greater than 50, keep the previous position
+                    if f >500: #If the finger force is greater than 50, keep the previous position
                         is_static[i] = 1 #Mark as a static finger, the finger will not move at this position
                         static_value[i] = temp_value[i] #The i-th finger position of the previous step
             temp_value = pos_value

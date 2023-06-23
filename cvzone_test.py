@@ -4,18 +4,19 @@ import serial
 import time
 from math import atan2, pi
 import math
-#import inspire_hand_r
+import inspire_hand_r
 
-#_inspire_hand_r = inspire_hand_r.InspireHandR()
+_inspire_hand_r = inspire_hand_r.InspireHandR()
+_inspire_hand_r.__init__()
 
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture('/dev/video0')
 detector = HandDetector(detectionCon=0.5, maxHands=2)
 
 
 # Serial COM
-port = 'COM3'
-ser = serial.Serial(port='COM3', baudrate=115200, bytesize=8,
+port ='/dev/ttyUSB0'
+ser = serial.Serial(port='/dev/ttyUSB0', baudrate=115200, bytesize=8,
                     stopbits=1, writeTimeout=0, timeout=0)
 
 if ser.is_open:
@@ -26,7 +27,7 @@ else:
 time.sleep(2)
 ser.readline()
 
-
+tempo=0
 count1 = 0
 count2 = 0
 count3 = 0
@@ -42,9 +43,17 @@ count12 = 0
 count13 = 0
 count14 = 0
 count15 = 0
+indexV=0
+middle_fingerV=0
+ring_fingerV=0
+little_fingerV=0
+thumbV=0
+
+
 
 
 def angle(A, B, C):
+    
     Ax, Ay = A[0]-B[0], A[1]-B[1]
     Cx, Cy = C[0]-B[0], C[1]-B[1]
     a = atan2(Ay, Ax)
@@ -60,10 +69,10 @@ def angle(A, B, C):
     return result
 
 def map_angle(angle):
-    angle_min = 30
-    angle_max = 180
-    value_min = -1
-    value_max = 2000
+    angle_min = 50
+    angle_max = 165
+    value_min = 2000
+    value_max = 0
 
     # Check if the angle is within the valid range
     if angle < angle_min:
@@ -71,13 +80,16 @@ def map_angle(angle):
     elif angle > angle_max:
         angle = angle_max
 
+
     # Calculate the mapped value
     mapped_value = ((angle - angle_min) / (angle_max - angle_min)) * (value_max - value_min) + value_min
 
     # Convert the mapped value to a byte sequence
     #byte_value = mapped_value.to_bytes(2, 'big')
 
-    return mapped_value
+    int_mapped_value = int(mapped_value)
+
+    return int_mapped_value
 
 
 
@@ -115,136 +127,76 @@ while True:
                            'little_finger': angle(lmList1[20][:2], lmList1[18][:2], lmList1[17][:2]),
                            'thumb': angle(lmList1[4][:2], lmList1[2][:2], lmList1[1][:2])})
 
-
+            precision=50
 
             for key, value in result.items():
                 if key == 'index':
-                    if value < 180 and 165 < value:
                         # time.sleep(1)
                         if count1 == 15:
-                            indexV=map_angle(value)#  ser.write(b'\x01')
-                            print(f'key: {key} , value: {value}', 2)
+                            temp=indexV
+                            indexV= map_angle(value)#  ser.write(b'\x01')
+                            if not(indexV > temp + precision or indexV <temp-precision) :
+                                 indexV=temp
+                                 
+                            #print(f'key: {key} , value: {indexV}')
+                            print(f'key: {key} , ANGLEvalue: {value}')
                             count1 == 0
                         else:
                             count1 += 1
 
-                    if value <= 160 and 110 < value:
-                        # time.sleep(1)
-                        if count2 == 15:
-                            indexV=map_angle(value)#  ser.write(b'\x02')
-                            count2 == 0
-                            print(f'key: {key} , value: {value}', 1)
-                        else:
-                            count2 += 1
-
-                    if value <= 105 and 0 < value:
-                        # time.sleep(1)
-                        if count3 == 15:
-                            indexV=map_angle(value)#  ser.write(b'\x04')
-                            count3 == 0
-                            print(f'key: {key} , value: {value}', 0)
-                        else:
-                            count3 += 1
 
                 if key == 'middle_finger':
-                    if value < 180 and 170 < value:
-                        if count4 == 10:
-                            middle_fingerV=map_angle(value) #   ser.write(b'\x21')
+                        if count4 == 15:
+                            temp=middle_fingerV
+                            middle_fingerV= map_angle(value)#  ser.write(b'\x01')
+                            if not(middle_fingerV > temp + precision or middle_fingerV <temp-precision) :
+                                 middle_fingerV=temp
                             count4 == 0
-                            print(f'key: {key} , value: {value}', 2)
+                            #print(f'key: {key} , value: {middle_fingerV}')
+                            print(f'key: {key} , ANGLEvalue: {value}')
+
                         else:
                             count4 += 1
 
-                    if value <= 170 and 115 < value:
-                        if count5 == 10:
-                            middle_fingerV=map_angle(value)# ser.write(b'\x22')
-                            count5 == 0
-                            print(f'key: {key} , value: {value}', 1)
-                        else:
-                            count5 += 1
-
-                    if value <= 105 and 0 < value:
-                        if count6 == 10:
-                            middle_fingerV=map_angle(value)#ser.write(b'\x24')
-                            count6 == 0
-                            print(f'key: {key} , value: {value}', 0)
-                        else:
-                            count6 += 1
-
                 if key == 'ring_finger':
-                    if value < 180 and 155 < value:
-                        if count7 == 10:
-                            ring_fingerV=map_angle(value) # ser.write(b'\x41')
+                        if count7 == 15:
+                            temp=ring_fingerV
+                            ring_fingerV= map_angle(value)#  ser.write(b'\x01')
+                            if not(ring_fingerV > temp + precision or ring_fingerV <temp-precision) :
+                                 ring_fingerV=temp
                             count7 == 0
-                            print(f'key: {key} , value: {value}')
+                            #print(f'key: {key} , value: {ring_fingerV}')
+                            print(f'key: {key} , ANGLEvalue: {value}')
+
                         else:
                             count7 += 1
 
-                    if value <= 145 and 115 < value:
-                        if count8 == 10:
-                            ring_fingerV=map_angle(value)#  ser.write(b'\x42')
-                            count8 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count8 += 1
-
-                    if value <= 105 and 0 < value:
-                        if count9 == 10:
-                            ring_fingerV=map_angle(value)#   ser.write(b'\x44')
-                            count9 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count9 += 1
-
                 if key == 'little_finger':
-                    if value < 180 and 155 < value:
-                        if count10 == 10:
-                            little_fingerV=map_angle(value)#  ser.write(b'\x61')
+                        if count10 == 15:
+                            temp=little_fingerV
+                            little_fingerV= map_angle(value)#  ser.write(b'\x01')
+                            if not(little_fingerV > temp + precision or little_fingerV <temp-precision) :
+                                 little_fingerV=temp
                             count10 == 0
-                            print(f'key: {key} , value: {value}')
+                            #print(f'key: {key} , value: {little_fingerV}')
+                            print(f'key: {key} , ANGLEvalue: {value}')
+
                         else:
                             count10 += 1
 
-                    if value <= 145 and 115 < value:
-                        if count11 == 10:
-                            little_fingerV=map_angle(value)# ser.write(b'\x62')
-                            count11 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count11 += 1
-
-                    if value <= 105 and 0 < value:
-                        if count12 == 10:
-                            little_fingerV=map_angle(value)#  ser.write(b'\x64')
-                            count12 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count12 += 1
-
+                    
                 if key == 'thumb':
-                    if value < 180 and 165 < value:
-                        if count13 == 10:
-                            thumbV=map_angle(value)# ser.write(b'\x81')
+                        if count13 == 15:
+                            temp=thumbV
+                            thumbV= map_angle(value)#  ser.write(b'\x01')
+                            if not(thumbV > temp + precision or thumbV <temp-precision) :
+                                 thumbV=temp
                             count13 == 0
-                            print(f'key: {key} , value: {value}')
+                            #print(f'key: {key} , value: {thumbV}')
+                            print(f'key: {key} , ANGLEvalue: {value}')
+
                         else:
                             count13 += 1
-
-                    if value <= 160 and 105 < value:
-                        if count14 == 10:
-                            thumbV=map_angle(value)# ser.write(b'\x82')
-                            count14 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count14 += 1
-
-                    if value <= 100 and 0 < value:
-                        if count15 == 10:
-                            thumbV=map_angle(value)# ser.write(b'\x84')
-                            count15 == 0
-                            print(f'key: {key} , value: {value}')
-                        else:
-                            count15 += 1
 
         
         if len(hands) == 2:
@@ -268,9 +220,13 @@ while True:
                 cv2.circle(img, lmList2[20][:2], 15, (0, 255, 255), -1)
                 cv2.circle(img, lmList2[4][:2], 15, (0, 255, 255), -1)
 
-       
-      #  _inspire_hand_r.setpos(little_fingerV,middle_fingerV,ring_fingerV,indexV,thumbV)
-        
+        if tempo == 3:
+            _inspire_hand_r.setpos(little_fingerV,ring_fingerV,middle_fingerV,indexV,thumbV,0)
+            #_inspire_hand_r.setpos(0,1000,0,100.50,0,0)
+            tempo=0
+        else:
+            tempo=tempo+1
+
 
     except:
         continue
