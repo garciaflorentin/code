@@ -5,6 +5,7 @@ import time
 from math import atan2, pi
 import math
 import inspire_hand_r
+import pyrealsense2 as rs
 
 _inspire_hand_r = inspire_hand_r.InspireHandR()
 _inspire_hand_r.__init__()
