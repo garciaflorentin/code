@@ -7,9 +7,9 @@ import math
 import inspire_hand_rTest
 import pyrealsense2 as rs
 from cvzone.HandTrackingModule import HandDetector
-
-_inspire_hand_r = inspire_hand_rTest.InspireHandR()
-_inspire_hand_r.__init__()
+import GraspingWthreshold
+import socket
+import subprocess
 
 # Initialize the RealSense pipeline and configuration
 pipeline = rs.pipeline()
@@ -19,6 +19,25 @@ config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
 # Start the pipeline
 pipeline.start(config)
+
+
+tcp1 = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+tcp_ip = socket.gethostname()         #Any interface
+port = 5000        #Arbitrary non-privileged port
+buffer_size = 1024
+tcp1.bind ((tcp_ip , port))
+tcp1.listen(1)
+#subprocess.Popen(["python3", "app.py"])
+
+con, addr = tcp1.accept()
+print ("TCP Connection from: ", addr)
+
+
+grasp = GraspingWthreshold.GraspingWthreshold()
+_inspire_hand_r = inspire_hand_rTest.InspireHandR()
+_inspire_hand_r.__init__()
+
+
 
 # Initialize the hand detector
 detector = HandDetector(detectionCon=0.5, maxHands=1)
@@ -39,13 +58,17 @@ finger_names = ['index', 'middle_finger', 'ring_finger', 'little_finger', 'thumb
 finger_angles = [0, 0, 0, 0, 0, 0]
 finger_counts = [0, 0, 0, 0, 0, 0]
 finger_threshold = 0
-finguer_precision = 35
-deadzone_finger= 175
-deadzone_thumb= 350
-wrist_position = np.zeros((1,3))
-smoothing_factor= 0.6
-previous_angles = np.zeros((6,1))
+finguer_precision = 0#35
+deadzone_finger= 100
+deadzone_thumb1= 150
+deadzone_thumb2= 400
 
+wrist_position = np.zeros((1,3))
+smoothing_factor= 1 #0.6
+previous_angles = np.zeros((6,1))
+blocked_finger = [[0] * 6 for _ in range(2)]
+temps_attente_us = 80000  # Temps en microsecondes
+dernier_temps = 0
 
 
 tempo = 0
@@ -67,38 +90,32 @@ def quantification_angle(finger_angle):
     return int(rounded_angle)
 
 
-def angle2(A,B,C):
-
-    #les coordonnées x, y et z des points A, B et C
+def angle2(A, B, C):
+    # Les coordonnées x, y et z des points A, B et C
     x_A, y_A, z_A = A[:3]  # Coordonnées du point A
     x_B, y_B, z_B = B[:3]  # Coordonnées du point B
     x_C, y_C, z_C = C[:3]  # Coordonnées du point C
 
-    #Calcul des vecteurs AB et BC
+    # Calcul des vecteurs AB et BC
     vec_AB = np.array([x_B - x_A, y_B - y_A, z_B - z_A])
     vec_BC = np.array([x_C - x_B, y_C - y_B, z_C - z_B])
 
-    #Calcul du produit scalaire des vecteurs AB et BC
-    dot_product = np.dot(vec_AB, vec_BC)
-
-    #Calcul des normes des vecteurs AB et BC
+    # Calcul des normes des vecteurs AB et BC
     norm_AB = np.linalg.norm(vec_AB)
     norm_BC = np.linalg.norm(vec_BC)
 
-    """ # Vérifier si les normes ne sont pas nulles ou très proches de zéro
-    if norm_AB < 1e-8 or norm_BC < 1e-8:
-        print("return 0.0")  # Valeur arbitraire à renvoyer """
+    # Calcul de l'angle en utilisant atan2
+    cross_product = np.cross(vec_AB, vec_BC)
+    dot_product = np.dot(vec_AB, vec_BC)
 
-    #calcul de l'angle  
-    angle_ABC = math.acos(dot_product / (norm_AB * norm_BC))
+    angle_ABC = math.atan2(np.linalg.norm(cross_product), dot_product)
 
-    
-
-    #conversion en degree
+    # Conversion en degrés
     result = math.degrees(angle_ABC)
 
     if result > 180:
         result = 360 - result
+
     return result
 
 
@@ -128,22 +145,22 @@ def angle(A, B, C):
 
 def map_angle(angle,finger_type):
 
-    angle_min = 10
-    angle_max = 160
+    angle_min = 20
+    angle_max = 150
     value_min = 0
     value_max = 2000
 
     if finger_type == 'thumb1':
 
         angle_min = 20
-        angle_max = 70
+        angle_max = 60
         value_min = 0
         value_max = 2000
 
     if finger_type =='thumb2':
 
-        angle_min = 25
-        angle_max = 35
+        angle_min = 20
+        angle_max = 30
         value_min = 0
         value_max = 2000
 
@@ -166,7 +183,12 @@ def map_angle(angle,finger_type):
     return int_mapped_value
 
 
+
+
 while True:
+
+    con, addr = tcp1.accept()
+
     # Get image frame
     frames = pipeline.wait_for_frames()
     color_frame = frames.get_color_frame()
@@ -189,7 +211,7 @@ while True:
     #Recuperation des informations de transformation entre les images couleur et profondeur
     color_to_depth_extrinsics = depth_profile.get_extrinsics_to(color_profile)
     depth_to_color_extrinsics = color_profile.get_extrinsics_to(depth_profile)
-     #Creation d'un facteur d'échelle utilisé pour convertir les valeurs de profondeur brutes (exprimées en unités arbitraires) en valeurs de profondeur en mètres.
+    #Creation d'un facteur d'échelle utilisé pour convertir les valeurs de profondeur brutes (exprimées en unités arbitraires) en valeurs de profondeur en mètres.
     depth_sensor = pipeline.get_active_profile().get_device().first_depth_sensor()
     depth_scale = depth_sensor.get_depth_scale()
 
@@ -213,12 +235,12 @@ while True:
             # Obtenir la profondeur des points de la main gauche (hand1)
             hand1_point = np.zeros((21, 3))
             
-            if handType1 == 'Left':
+            """ if handType1 == 'Left':
                 cv2.circle(img, lmList1[8][:2], 15, (0, 0, 255), -1)
                 cv2.circle(img, lmList1[12][:2], 15, (0, 0, 255), -1)
                 cv2.circle(img, lmList1[16][:2], 15, (0, 0, 255), -1)
                 cv2.circle(img, lmList1[20][:2], 15, (0, 0, 255), -1)
-                cv2.circle(img, lmList1[4][:2], 15, (0, 0, 255), -1)
+                cv2.circle(img, lmList1[4][:2], 15, (0, 0, 255), -1) """
                 
 
             if depth_frame is not None:
@@ -233,63 +255,97 @@ while True:
                 """wrist_depth = hand1_point[0][2]  # Récupérer la dernière donnée de profondeur de hand1_point
                 inverse_depth = 1/wrist_depth  # Calculer la valeur inversée
                 circle_radius = int(inverse_depth * 20)  # Ajuster le rayon du cercle en fonction de inverse_depth """
-                cv2.circle(img, tuple(map(int, wrist_position)), 15 , (0, 0, 0), -1)
-                cv2.putText(img, f'Wrist Position: {wrist_position}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 255, 255), 2)
-                cv2.putText(img, f'Wrist Depth:{int(hand1_point[0][2])}', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 255, 255), 2)
+                cv2.circle(img, tuple(map(int, wrist_position)), 15 , (0, 0, 255), -1)
+                cv2.putText(img, f'Wrist Position: {wrist_position}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(0, 0, 255), 2)
+                Wrist_Depth = "{:.{}f}".format(hand1_point[0][2], 2)
+                cv2.putText(img, f'Wrist Depth:{Wrist_Depth}', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(0,0, 255), 2)
 
 
 
 
+                if (time.perf_counter() * 1e6) - dernier_temps >= temps_attente_us:
 
-                angles = [
-                angle2(hand1_point[20][:3], hand1_point[18][:3], hand1_point[17][:3]),
-                angle2(hand1_point[16][:3], hand1_point[14][:3], hand1_point[13][:3]),
-                angle2(hand1_point[12][:3], hand1_point[10][:3], hand1_point[9][:3]),
-                angle2(hand1_point[8][:3], hand1_point[6][:3], hand1_point[5][:3]),
-                angle2(hand1_point[4][:3], hand1_point[3][:3], hand1_point[2][:3]),
-                angle2(hand1_point[3][:3], hand1_point[1][:3], hand1_point[0][:3])]
-                result = dict(zip(finger_names, angles))                     
+                    angles = [
+                    angle2(hand1_point[20][:3], hand1_point[18][:3], hand1_point[17][:3]),
+                    angle2(hand1_point[16][:3], hand1_point[14][:3], hand1_point[13][:3]),
+                    angle2(hand1_point[12][:3], hand1_point[10][:3], hand1_point[9][:3]),
+                    angle2(hand1_point[8][:3], hand1_point[6][:3], hand1_point[5][:3]),
+                    angle2(hand1_point[4][:3], hand1_point[3][:3], hand1_point[2][:3]),
+                    angle2(hand1_point[3][:3], hand1_point[1][:3], hand1_point[0][:3])]
+                    result = dict(zip(finger_names, angles))                     
+                    #print(result)
+                    # Mettre à jour l'angle précédent
+                    previous_angles = finger_angles
 
+                    for i, finger_name in enumerate(finger_names):
 
+                        finger_angle = finger_angles[i]
+                        finger_count = finger_counts[i]
 
-            for i, finger_name in enumerate(finger_names):
+                        if finger_name in result:
+                            if finger_count == finger_threshold:
+                                temp = finger_angle
+                                finger_angle = map_angle(result[finger_name], finger_name)
 
-                finger_angle = finger_angles[i]
-                finger_count = finger_counts[i]
+                                # Lissage des angles
+                                finger_angleSmooth = smoothing_factor * finger_angle + (1 - smoothing_factor) * previous_angles[i]
+                                finger_angle = quantification_angle(int(finger_angleSmooth))
 
-                if finger_name in result:
-                    if finger_count == finger_threshold:
-                        temp = finger_angle
-                        finger_angle = map_angle(result[finger_name], finger_name)
+                                # Vérifier la précision de l'angle
+                                if finger_name == 'thumb1':
+                                    if abs(finger_angle - previous_angles[i]) <= deadzone_thumb1:
+                                        finger_angle = previous_angles[i]  # Ignorer la mise à jour de l'angle
+                                elif finger_name == 'thumb2':
+                                    if abs(finger_angle - previous_angles[i]) <= deadzone_thumb2:
+                                        finger_angle = previous_angles[i]  # Ignorer la mise à jour de l'angle
+                                # Vérifier si la différence est inférieure à la zone morte
+                                else:
+                                    if abs(finger_angle - previous_angles[i]) <= deadzone_finger:
+                                        finger_angle = previous_angles[i]  # Ignorer la mise à jour de l'angle
 
-                        # Lissage des angles
-                        finger_angleSmooth = smoothing_factor * finger_angle + (1 - smoothing_factor) * previous_angles[i]
-                        finger_angle = quantification_angle(int(finger_angleSmooth))
+                                
+                                finger_count = 0
+                            else:
+                                finger_count += 1
 
-                        # Vérifier la précision de l'angle
-                        if finger_name == 'thumb1' or finger_name=='thumb2':
-                             if abs(finger_angle - previous_angles[i]) <= deadzone_thumb:
-                                finger_angle = previous_angles[i]  # Ignorer la mise à jour de l'angle
-                        else :
-                        # Vérifier si la différence est inférieure à la zone morte
-                            if abs(finger_angle - previous_angles[i]) <= deadzone_finger:
-                                finger_angle = previous_angles[i]  # Ignorer la mise à jour de l'angle
+                        finger_angles[i] = finger_angle
+                        finger_counts[i] = finger_count
 
-                        # Mettre à jour l'angle précédent
-                        previous_angles[i] = finger_angle
+                    #_inspire_hand_r.setpos(*finger_angles)
 
-                        finger_count = 0
+                    data = con.recv(buffer_size).decode('utf-8')  # Recevoir les données (1024 est la taille du tampon)
+                    if data == b'NULL':
+                        print('NULL')
+                    # Traitez les données reçues selon vos besoins
+                    # if-else pour exécuter soit l'action correspondante soit grasp.GraspPos3(...)
+                    if data == b'open':
+                        print('open')
+                    elif data == b'close':
+                        print('close')
+                        # ...
+                    elif data == b'ok':
+                        print('ok')
+                        # ...
+                    elif data == b'grasp2':
+                        print('grasp2')
+                        # ...       
+                    elif data == b'grasp5':
+                        print('grasp5')
+                        # ...       
+                    elif data == b'rock':
+                        print('rock')
+                        # ...                                                                   
                     else:
-                        finger_count += 1
+                        # Exécutez la ligne grasp.GraspPos3(...) par défaut
+                        grasp.GraspPos3(_inspire_hand_r, *finger_angles, *previous_angles, blocked_finger)
+                    dernier_temps = time.perf_counter() * 1e6  # Récupérer le temps actuel en microsecondes
 
-                finger_angles[i] = finger_angle
-                finger_counts[i] = finger_count
-
-            _inspire_hand_r.setpos(*finger_angles)
-            
+                    #for ligne in blocked_finger:
+                    #   print('#',ligne)
+                    
     except:
         continue 
-    
+        
 
     # Display
     cv2.imshow("Image", img)
@@ -300,3 +356,5 @@ while True:
 pipeline.stop()
 cv2.destroyAllWindows()
 ser.close()
+tcp1.close()
+con.close()
